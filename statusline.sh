@@ -2,12 +2,28 @@
 # Claude Code statusline: one jq call, one git call (cached per directory).
 # Requires: bash 3.2+, jq 1.6+, git 2.11+. Works on macOS and Linux.
 # Set "refreshInterval": 60 in the statusLine settings so the reset countdowns
-# keep ticking while the session is idle.
+# keep ticking, and other sessions' usage shows up, while the session is idle.
+
+# --- Rate limits seen by other sessions on the same account -----------------
+# Claude Code only sends a session new limit numbers when that session gets a
+# reply, so an idle session would show stale usage. Every session records what
+# it last saw in one file per config dir (one account each), and all sessions
+# show the newest reading. Format: sid,seen_at,r5,u5,r7,u7;... (r = resets_at,
+# u = used percentage).
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/claude-statusline"
+CONFIG_DIR=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
+LIMITS_FILE="$CACHE_DIR/limits${CONFIG_DIR//\//_}"
+SEEN=''
+[ -f "$LIMITS_FILE" ] && IFS= read -r SEEN < "$LIMITS_FILE"
 
 # --- Parse everything in a single jq pass -----------------------------------
 # Fields are joined with \x1f (unit separator) so empty values survive `read`.
-DATA=$(jq -r '
+DATA=$(jq -r --arg seen "$SEEN" '
   def clean: tostring | gsub("[\u0000-\u001f\u007f-\u009f]"; "");  # no terminal escapes
+  def num: tonumber? // 0;
+  def window($r; $u): if $r > now then {used_percentage: $u, resets_at: $r}
+                      elif $r == 0 and $u > 0 then {used_percentage: $u}
+                      else null end;
   def tok: if . >= 1000000 then "\((. / 100000 | floor) / 10)M"
            elif . >= 1000 then "\((. / 100 | floor) / 10)k"
            else tostring end;
@@ -27,20 +43,41 @@ DATA=$(jq -r '
   def pct: [[(.context_window.used_percentage // 0 | floor), 0] | max, 100] | min;
   # Rate-limit window: percentage, countdown, and a pace colour. Pace compares
   # the share of the limit used with the share of the window gone: using it
-  # faster than time passes means it runs out before the reset.
+  # faster than time passes means it runs out before the reset. Early in a
+  # window, or at low usage, pace is too noisy to warn about.
   def lim($k; $win): .rate_limits[$k] as $l
     | if ($l.used_percentage // null) == null then "", "", ""
       else ($l.used_percentage) as $u
         | (if $l.resets_at then ([[1 - (($l.resets_at - now) / $win), 0] | max, 1] | min)
            else null end) as $gone
-        | (if $u >= 90 then "R"
-           elif $gone == null or $gone < 0.1 then ""
-           elif $u / 100 / $gone >= 1.25 then "R"
-           elif $u / 100 / $gone >= 1 then "Y"
+        | (if $gone == null or $gone < 0.1 then null else $u / 100 / $gone end) as $rate
+        | (if $u >= 90 or ($rate != null and $rate >= 1.25 and $u >= 50) then "R"
+           elif $u >= 75 or ($rate != null and $rate >= 1 and $u >= 25) then "Y"
            else "" end) as $pace
         | "\($u | round)", $pace, ($l.resets_at // 0 | if . > 0 then left else "" end)
       end;
-  [ (.model.display_name // "unknown" | clean),
+
+  # Merge the limits of this session with those of the others; newest wins.
+  (.session_id // "" | tostring | gsub("[,;]"; "")) as $sid
+  | ($seen | split(";") | map(split(",") | select(length == 6)
+      | {sid: .[0], ts: (.[1] | num), r5: (.[2] | num), u5: (.[3] | num),
+         r7: (.[4] | num), u7: (.[5] | num)})) as $seen
+  | {r5: (.rate_limits.five_hour.resets_at // 0), u5: (.rate_limits.five_hour.used_percentage // 0),
+     r7: (.rate_limits.seven_day.resets_at // 0), u7: (.rate_limits.seven_day.used_percentage // 0)} as $own
+  | ($seen | map(select(.sid == $sid)) | first) as $mine
+  # New numbers from Claude Code are a fresh reading; unchanged ones keep the
+  # time they were first seen, so an idle session never looks newer than it is.
+  | (if $own.r5 + $own.u5 + $own.r7 + $own.u7 == 0 then $mine
+     elif $mine != null and [$mine.r5, $mine.u5, $mine.r7, $mine.u7] == [$own.r5, $own.u5, $own.r7, $own.u7]
+     then $mine
+     else $own + {sid: $sid, ts: (now | floor)} end) as $me
+  | ([$seen[] | select(.sid != $sid)] + (if $me != null then [$me] else [] end)
+     | map(select(.ts > now - 691200)) | sort_by(.ts) | .[-20:]) as $keep
+  | ($keep | last) as $newest
+  | (if $newest != null then .rate_limits = {five_hour: window($newest.r5; $newest.u5),
+                                              seven_day: window($newest.r7; $newest.u7)}
+     else . end)
+  | [ (.model.display_name // "unknown" | clean),
     (.effort.level // "" | clean),
     (.fast_mode // false),
     (.session_name // "" | clean),
@@ -65,12 +102,19 @@ DATA=$(jq -r '
     (.cost.total_lines_removed // 0),
     (.exceeds_200k_tokens // false),
     lim("five_hour"; 18000),
-    lim("seven_day"; 604800)
+    lim("seven_day"; 604800),
+    ($keep | map("\(.sid),\(.ts),\(.r5),\(.u5),\(.r7),\(.u7)") | join(";"))
   ] | map(tostring) | join("\u001f")' 2>/dev/null) && [ -n "$DATA" ] \
   || { echo "statusline: unreadable input"; exit 0; }
 IFS=$'\x1f' read -r MODEL EFFORT FAST SESSION AGENT VIM STYLE DIR PROJ ADDED WT \
   PCT BAR_ON BAR_OFF CTX TOK_IN TOK_OUT COST SUB DUR ADD DEL OVER \
-  L5 L5C L5T L7 L7C L7T <<< "$DATA"
+  L5 L5C L5T L7 L7C L7T KEEP <<< "$DATA"
+
+# Write the merged readings back only when they changed (atomic replace).
+if [ "$KEEP" != "$SEEN" ]; then
+  mkdir -p "$CACHE_DIR" && printf '%s\n' "$KEEP" > "$LIMITS_FILE.$$" \
+    && mv -f "$LIMITS_FILE.$$" "$LIMITS_FILE"
+fi
 
 # --- Colors & icons (hex UTF-8 bytes: portable to macOS bash 3.2) -----------
 # Icons are monochrome text symbols, not emoji, so they take the colour of the
