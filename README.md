@@ -12,7 +12,7 @@ A fast, two-line status line for [Claude Code](https://code.claude.com/docs/en/s
 
 **Slow down.** Context is past 90% and both limits are burning much faster than their windows, so you'd run out before the reset. Everything that needs attention is red.
 
-![Context at 93% and both limits in red, 71% of the 5-hour limit with 3h left and 46% of the weekly limit with 4d14h left](docs/images/red.png)
+![Context at 93% and both limits in red, 71% of the 5-hour limit with 3h left and 58% of the weekly limit with 4d14h left](docs/images/red.png)
 
 **Fresh window.** The 5-hour limit just reset. The weekly limit is at 31% with a day left, which is well under pace, so it stays plain.
 
@@ -33,7 +33,8 @@ A fast, two-line status line for [Claude Code](https://code.claude.com/docs/en/s
 ## Features
 
 - **Reset countdowns.** `5h 30% ↻ 2h13m` shows how much of the 5-hour limit is used and how long until it resets. The weekly limit gets the same.
-- **Pace warning.** A limit turns yellow when you're using it faster than time is passing, and red when you'll run out well before the reset (or at 90%).
+- **Pace warning.** A limit turns yellow when you're using it faster than time is passing, and red when you'll run out well before the reset. Low usage and the start of a window don't warn, because pace is too noisy there.
+- **Live across sessions.** Sessions on the same account share their latest limit readings, so an idle session still shows usage from your other sessions.
 - **Text icons, not emoji.** Thin symbols that take the colour of the text around them and stay one cell wide.
 - **Colour only when it matters.** Labels are dim, values are plain, and yellow or red means something needs attention.
 - **Fits narrow terminals.** The least important parts drop first instead of wrapping.
@@ -55,7 +56,11 @@ A fast, two-line status line for [Claude Code](https://code.claude.com/docs/en/s
 | `◷ 25m` | Session duration. |
 | `+120 -7` | Lines added and removed. |
 
-The limits only appear on Pro and Max plans, after the first reply in a session.
+The limits only appear on Pro and Max plans.
+
+**Limit colours.** Pace compares how much of a limit you've used with how much of its window has passed. Yellow means you're on pace to hit the limit before it resets (at 25% used or more), or you're at 75%. Red means you'd run out well before the reset (at 50% used or more), or you're at 90%. Nothing is coloured in the first 10% of a window.
+
+**Other sessions.** Claude Code only sends a session new limit numbers when that session gets a reply. So each session writes what it last saw to `~/.cache/claude-statusline/`, one file per config directory, and every session shows the newest reading. That's why `refreshInterval` matters: it re-runs the script every minute, which lets an idle session pick up usage from your other sessions. Separate accounts with separate `CLAUDE_CONFIG_DIR`s never mix.
 
 When the terminal is narrow, parts drop in this order:
 
@@ -88,7 +93,7 @@ Then add this to `~/.claude/settings.json`:
 }
 ```
 
-`refreshInterval` re-runs the script every minute so the countdowns keep ticking while the session is idle. Start a new Claude Code session to see it.
+`refreshInterval` re-runs the script every minute so the countdowns keep ticking, and usage from your other sessions shows up, while the session is idle. Start a new Claude Code session to see it.
 
 ## Preview
 

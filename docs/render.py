@@ -83,7 +83,7 @@ SCENES = [
             "cost": {"total_cost_usd": 14.85, "total_duration_ms": 133 * 60000,
                      "total_lines_added": 640, "total_lines_removed": 212},
             "rate_limits": {"five_hour": {"used_percentage": 71, "resets_at": 3 * HOUR},
-                            "seven_day": {"used_percentage": 46, "resets_at": 110 * HOUR}},
+                            "seven_day": {"used_percentage": 58, "resets_at": 110 * HOUR}},
         },
     },
     {
@@ -205,7 +205,9 @@ def render_statusline(data, repo, cols, home):
     for window in (data.get("rate_limits") or {}).values():
         window["resets_at"] += now + 30  # offsets are relative; +30s so minutes don't round down
     data["workspace"] = {**data.get("workspace", {}), "current_dir": str(repo), "project_dir": str(repo)}
-    env = {**os.environ, "COLUMNS": str(cols), "HOME": str(home), "XDG_CACHE_HOME": str(home / "cache")}
+    # Each scene gets its own config dir, so scenes don't share rate-limit readings.
+    env = {**os.environ, "COLUMNS": str(cols), "HOME": str(home), "XDG_CACHE_HOME": str(home / "cache"),
+           "CLAUDE_CONFIG_DIR": str(repo)}
     result = subprocess.run(["bash", str(ROOT / "statusline.sh")], input=json.dumps(data),
                             capture_output=True, text=True, env=env, check=True)
     return result.stdout.rstrip("\n").split("\n")
