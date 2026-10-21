@@ -2,10 +2,33 @@
 
 A fast, two-line status line for [Claude Code](https://code.claude.com/docs/en/statusline) that tells you how much room you have left: context, rate limits and the time until they reset.
 
-```
-Opus · medium  ◇ setup-statusline  ⌂ AgentWebUI-Workspace  ⎇ develop +1 ~2
-━━━━━━━━━━ 55% of 200k  in:110k out:3.2k  5h 30% ↻ 2h13m  7d 12% ↻ 4d5h  ~$4.12  ◷ 25m  +120 -7
-```
+![The statusline under a Claude Code prompt: model, session, folder and git branch on the first line; context bar, tokens, 5-hour and weekly limits with reset countdowns, cost, duration and lines changed on the second](docs/images/everyday.png)
+
+## Scenes
+
+**Getting close.** Context passes 70% and the 5-hour limit is being used about as fast as time passes, so both turn yellow. The countdown says how long until the limit resets.
+
+![Context at 72% and the 5-hour limit at 54% in yellow, with 2h20m until it resets](docs/images/on-pace.png)
+
+**Slow down.** Context is past 90% and both limits are burning much faster than their windows, so you'd run out before the reset. Everything that needs attention is red.
+
+![Context at 93% and both limits in red, 71% of the 5-hour limit with 3h left and 46% of the weekly limit with 4d14h left](docs/images/red.png)
+
+**Fresh window.** The 5-hour limit just reset. The weekly limit is at 31% with a day left, which is well under pace, so it stays plain.
+
+![The 5-hour limit at 2% with 4h51m until it resets, and the weekly limit at 31% with 1d2h left](docs/images/fresh.png)
+
+**API key.** No subscription limits, so those parts don't appear, and the cost is real money, so it's shown at full strength. `▲ >200k` warns when a 1M-context session passes 200k tokens.
+
+![A Sonnet session with an API key: 22% of a 1M context with a red >200k warning, and the cost shown at full strength](docs/images/api-key.png)
+
+**Worktree, agent and vim.** Shows the agent, vim mode, output style and the linked worktree next to the branch, with staged and modified counts.
+
+![An agent named reviewer, INSERT mode, the Explanatory style, and the feat/search branch tagged wt:search with 3 staged and 2 modified files](docs/images/worktree.png)
+
+**Narrow terminal.** At 80 columns, duration and lines changed drop first instead of wrapping.
+
+![The same session as the first image at 80 columns, with duration and lines changed dropped](docs/images/narrow.png)
 
 ## Features
 
@@ -73,6 +96,13 @@ Then add this to `~/.claude/settings.json`:
 
 ```bash
 ./preview.sh
+```
+
+The images in this README come from `docs/render.py`, which runs the real script on sample sessions and screenshots the output. To regenerate them after changing the script:
+
+```bash
+docker build -t claude-statusline-render docs
+docker run --rm -v "$PWD":/repo -w /repo claude-statusline-render python3 docs/render.py
 ```
 
 ## Credits
