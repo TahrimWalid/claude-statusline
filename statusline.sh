@@ -159,10 +159,11 @@ fit "0:$S_MODEL" "3:$S_AGENT" "2:$S_VIM" "6:$S_STYLE" "4:$S_SESSION" \
 L1=$LINE
 
 # --- Line 2: how much is left ------------------------------------------------
-if   [ "$PCT" -ge 90 ]; then BC=$R
-elif [ "$PCT" -ge 70 ]; then BC=$Y
-else BC=$G; fi
-S_CTX="$BC$BAR_ON$X$D$BAR_OFF$X $PCT% ${D}of $CTX$X"
+# The bar is always coloured; the percentage only when it needs attention.
+if   [ "$PCT" -ge 90 ]; then BC=$R PC=$R
+elif [ "$PCT" -ge 70 ]; then BC=$Y PC=$Y
+else BC=$G PC=''; fi
+S_CTX="$BC$BAR_ON$X$D$BAR_OFF$X $PC$PCT%$X ${D}of $CTX$X"
 [ "$OVER" = true ] && S_CTX+=" $R$I_WARN >200k$X"
 S_TOK="${D}in:$X$TOK_IN ${D}out:$X$TOK_OUT"
 limit() {  # limit LABEL PERCENT PACE COUNTDOWN
