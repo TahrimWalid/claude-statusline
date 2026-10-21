@@ -11,16 +11,18 @@ DATA=$(jq -r '
   def tok: if . >= 1000000 then "\((. / 100000 | floor) / 10)M"
            elif . >= 1000 then "\((. / 100 | floor) / 10)k"
            else tostring end;
+  def two($big; $u1; $small; $u2):                                 # 3h5m, 3h, 4d2h, 4d
+    "\($big)\($u1)" + (if $small > 0 then "\($small)\($u2)" else "" end);
   def dur: (. / 1000 | floor) as $s
-           | if $s >= 3600 then "\($s / 3600 | floor)h\($s % 3600 / 60 | floor)m"
+           | if $s >= 3600 then two($s / 3600 | floor; "h"; $s % 3600 / 60 | floor; "m")
              elif $s >= 60 then "\($s / 60 | floor)m"
              else "\($s)s" end;
   def left: (. - now | floor) as $s
             | if $s <= 0 then ""
               elif $s < 60 then "<1m"
               elif $s < 3600 then "\($s / 60 | floor)m"
-              elif $s < 86400 then "\($s / 3600 | floor)h\($s % 3600 / 60 | floor)m"
-              else "\($s / 86400 | floor)d\($s % 86400 / 3600 | floor)h" end;
+              elif $s < 86400 then two($s / 3600 | floor; "h"; $s % 3600 / 60 | floor; "m")
+              else two($s / 86400 | floor; "d"; $s % 86400 / 3600 | floor; "h") end;
   def cells($n): [range($n) | "━"] | join("");
   def pct: [[(.context_window.used_percentage // 0 | floor), 0] | max, 100] | min;
   # Rate-limit window: percentage, countdown, and a pace colour. Pace compares
